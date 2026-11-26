@@ -8,6 +8,7 @@ import { cacheRoutes } from "./routes/cache";
 import { config, assertValidConfig } from "./config";
 import { SessionStore } from "./session-store";
 import { shutdownWorker } from "./workers/replay.worker";
+import { defaultRateLimiter } from "./middleware/rate-limiter";
 
 // Validate configuration on startup
 assertValidConfig(config);
@@ -83,11 +84,16 @@ server.addHook("onClose", async () => {
 // CORS Middleware
 // ---------------------------------------------------------------------------
 server.register(healthRoutes);
-server.register(replayRoutes, { prefix: "/api" });
-server.register(sessionRoutes, { prefix: "/api" });
-server.register(aiRoutes, { prefix: "/api" });
-server.register(cacheRoutes, { prefix: "/api" });
-server.register(cacheRoutes);
+
+// Apply defaultRateLimiter to all /api routes; replay routes override with
+// the tighter replayRateLimiter in their own preHandler arrays.
+server.register(async function apiRoutes(api) {
+  api.addHook("preHandler", defaultRateLimiter);
+  api.register(replayRoutes);
+  api.register(sessionRoutes);
+  api.register(aiRoutes);
+  api.register(cacheRoutes);
+}, { prefix: "/api" });
 
 // ---------------------------------------------------------------------------
 // Start
